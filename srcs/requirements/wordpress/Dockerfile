@@ -1,50 +1,42 @@
-FROM alpine:3.20
+FROM debian:buster
 
-ARG PHP_VERSION=82
-ARG DB_NAME
-ARG DB_USER
-ARG DB_PASS
-
-# Add necessary repositories
-RUN echo "http://dl-cdn.alpinelinux.org/alpine/v3.20/main" >> /etc/apk/repositories && \
-    echo "http://dl-cdn.alpinelinux.org/alpine/v3.20/community" >> /etc/apk/repositories
-
-# Install PHP and required extensions
-RUN apk update && apk upgrade && apk add --no-cache \
-    php${PHP_VERSION} \
-    php${PHP_VERSION}-fpm \
-    php${PHP_VERSION}-mysqli \
-    php${PHP_VERSION}-json \
-    php${PHP_VERSION}-curl \
-    php${PHP_VERSION}-dom \
-    php${PHP_VERSION}-exif \
-    php${PHP_VERSION}-fileinfo \
-    php${PHP_VERSION}-mbstring \
-    php${PHP_VERSION}-openssl \
-    php${PHP_VERSION}-xml \
-    php${PHP_VERSION}-zip \
-    php${PHP_VERSION}-redis \
+RUN apt-get update && apt-get install -y \
+    php7.3 \
+    php7.3-fpm \
+    php7.3-mysql \
+    php7.3-json \
+    php7.3-curl \
+    php7.3-gd \
+    php7.3-intl \
+    php7.3-mbstring \
+    php7.3-xml \
+    php7.3-zip \
     wget \
-    unzip && \
-    sed -i "s|listen = 127.0.0.1:9000|listen = 9000|g" \
-        /etc/php${PHP_VERSION}/php-fpm.d/www.conf && \
-    sed -i "s|;listen.owner = nobody|listen.owner = nobody|g" \
-        /etc/php${PHP_VERSION}/php-fpm.d/www.conf && \
-    sed -i "s|;listen.group = nobody|listen.group = nobody|g" \
-        /etc/php${PHP_VERSION}/php-fpm.d/www.conf && \
-    rm -f /var/cache/apk/*
+    curl
 
-# Set up WordPress
-WORKDIR /var/www
-RUN wget https://wordpress.org/latest.zip && \
-    unzip latest.zip && \
-    cp -rf wordpress/* . && \
-    rm -rf wordpress latest.zip
+# Install wp-cli
+RUN curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar \
+    && chmod +x wp-cli.phar \
+    && mv wp-cli.phar /usr/local/bin/wp
 
-# Copy and run WordPress configuration script
-COPY ./requirements/wordpress/conf/wp-config-create.sh .
-RUN sh wp-config-create.sh && rm wp-config-create.sh && \
-    chmod -R 0777 wp-content/
+# Create necessary directories
+RUN mkdir -p /var/www/html /run/php
 
-# Start PHP-FPM
-CMD /usr/sbin/php-fpm${PHP_VERSION} -F
+WORKDIR /var/www/html
+
+# Set up wp-config.php
+COPY tools/wp-config.php /var/www/html/wp-config.php
+
+# Configure PHP-FPM
+COPY conf/www.conf /etc/php/7.3/fpm/pool.d/www.conf
+
+# Set correct permissions
+RUN chown -R www-data:www-data /var/www/html /run/php
+
+EXPOSE 9000
+
+# Create a startup script
+COPY tools/start.sh /start.sh
+RUN chmod +x /start.sh
+
+CMD ["/start.sh"]
